@@ -9,6 +9,7 @@ import os.path
 import re
 import socket
 import threading
+import time
 
 __author__="Eric Gach <eric@php-oop.net>"
 __date__ ="$Jan 13, 2012 12:47:17 PM$"
@@ -182,6 +183,7 @@ class IrssiProxyConnection(threading.Thread):
 		self.irssi.push_msg("Connected to %s" % (self.host))
 		gtk.threads_leave()
 		self.sock.setblocking(0)
+		self.sock.settimeout(0.5)
 		self.send("PASS %s" % (self.password))
 		self.send("NICK IrssiProxy")
 		self.send("USER IrssiProxy 0 * :IrssiProxy")
@@ -191,13 +193,19 @@ class IrssiProxyConnection(threading.Thread):
 				print "Recv: %s" % (data.strip())
 				m = re.match(":([^\s]+)![^\s]+\sPRIVMSG\s([^\s]+)\s:(.*)", data)
 				if m is not None and re.search(self.irssi.match.get_text(), m.group(3)):
-					n = pynotify.Notification("%s on %s → %s" % (m.group(1), m.group(2), m.group(3)))
+					gtk.threads_enter()
+					if not m.group(3).find(chr(1)+"ACTION"):
+						text = "* "+m.group(1)+" "+m.group(3).replace(chr(1)+"ACTION", "").replace(chr(1),"")
+					else:
+						text = m.group(3)
+					n = pynotify.Notification("%s on %s → %s" % (m.group(1), m.group(2), text))
 					n.set_urgency(pynotify.URGENCY_NORMAL)
 					n.set_timeout(10)
 					n.connect("closed", lambda e : n.close())
 					n.show()
+					gtk.threads_leave()
 			except socket.error, e:
-				if e.errno != 11:
+				if e.errno != 11 and e.errno is not None:
 					self.stop()
 					print e
 		self.sock = None
@@ -215,6 +223,7 @@ class IrssiProxyConnection(threading.Thread):
 		return self.sock.sendall(buffer + "\r\n")
 
 	def stop(self):
+		self.sock.close()
 		self.stopthread.set()
 
 if __name__ == "__main__":
