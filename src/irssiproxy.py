@@ -3,24 +3,27 @@
 
 import pygtk
 pygtk.require('2.0')
+import gobject
 import gtk
 import pynotify
 import os.path
 import re
 import socket
 import threading
-import time
 
 __author__="Eric Gach <eric@php-oop.net>"
 __date__ ="$Jan 13, 2012 12:47:17 PM$"
 __version__ = "0.1-dev"
 
 class IrssiProxy(gtk.Window):
+	"""
+	TODO: Still need to implement away/back feature.
+	"""
 	def __init__(self):
 		super(IrssiProxy, self).__init__(gtk.WINDOW_TOPLEVEL)
 		pynotify.init("IrssiProxy")
 		self.set_title("IrssiProxy Configuration")
-		self.set_default_size(320, 240)
+		self.set_default_size(400, 300)
 		self._icon = os.path.realpath(os.path.dirname(__file__)+"/resources/65704.png")
 		self._initStatusIcon()
 		self._initLayout()
@@ -31,9 +34,45 @@ class IrssiProxy(gtk.Window):
 		self.set_position(gtk.WIN_POS_CENTER_ALWAYS)
 		self.show()
 
+	def addNetwork(self, widget, data=None):
+		addNetwork = gtk.Dialog("Add Network", self, gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT, (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT, gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+
+		#host
+		hBoxHost = gtk.HBox()
+		labelHost = gtk.Label("Host")
+		hBoxHost.pack_start(labelHost, False, False, 10)
+		entryHost = gtk.Entry()
+		hBoxHost.pack_end(entryHost, True, True, 10)
+		addNetwork.vbox.pack_start(hBoxHost, False, False, 10)
+
+		#port
+		hBoxPort = gtk.HBox()
+		labelPort = gtk.Label("Port")
+		hBoxPort.pack_start(labelPort, False, False, 10)
+		entryPort = gtk.Entry()
+		entryPort.set_text('6667')
+		entryPort.set_width_chars(10)
+		hBoxPort.pack_start(entryPort, False, False, 10)
+		addNetwork.vbox.pack_start(hBoxPort, False, False, 10)
+
+		#password
+		hBoxPass = gtk.HBox()
+		labelPass = gtk.Label("Password")
+		hBoxPass.pack_start(labelPass, False, False, 10)
+		entryPass = gtk.Entry()
+		entryPass.set_visibility(False)
+		hBoxPass.pack_end(entryPass, True, True, 10)
+		addNetwork.vbox.pack_start(hBoxPass, False, False, 10)
+
+		addNetwork.show_all()
+		r = addNetwork.run()
+		if (r == gtk.RESPONSE_ACCEPT):
+			print "so I should add the network %s with the port %i and password %s? OK!" % (entryHost.get_text(), int(entryPort.get_text()), entryPass.get_text())
+		addNetwork.destroy()
+
 	def delete(self, widget, data=None):
 		self.hide()
-		# Stop the window from being deleted
+		# Stop the window from being deleted - since we have a tray icon
 		return True
 
 	def destroy(self, widget, data=None):
@@ -51,30 +90,27 @@ class IrssiProxy(gtk.Window):
 
 	def popup_statusIcon_menu(self, status_icon, button, activate_time, *args):
 		menu = gtk.Menu()
-		quit = gtk.MenuItem("Quit")
 		about = gtk.MenuItem("About")
 		about.connect("activate", self.show_about)
-		quit.connect("activate", self.destroy)
 		menu.append(about)
+		quit = gtk.MenuItem("Quit")
+		quit.connect("activate", self.destroy)
 		menu.append(quit)
 		menu.show_all()
 		menu.popup(None, None, gtk.status_icon_position_menu, button, activate_time, status_icon)
 
 	def push_msg(self, message):
-		self._statusBar.pop(self._context)
-		self._statusBar.push(self._context, message)
+		pass
 
 	def show(self, icon = None):
 		super(IrssiProxy, self).show()
 
 	def show_about(self, widget, data=None):
 		about_dialog = gtk.AboutDialog()
-
 		about_dialog.set_destroy_with_parent(True)
 		about_dialog.set_name("IrssiProxy Notification")
 		about_dialog.set_version(__version__)
 		about_dialog.set_authors([__author__])
-
 		about_dialog.run()
 		about_dialog.destroy()
 
@@ -88,54 +124,44 @@ class IrssiProxy(gtk.Window):
 			print e
 			entry.modify_text(gtk.STATE_NORMAL, gtk.gdk.color_parse('red'))
 
+	def _initColumns(self, treeView):
+		renderPixbuf = gtk.CellRendererPixbuf()
+		column = gtk.TreeViewColumn("Connected", renderPixbuf, pixbuf=0)
+		column.set_sort_column_id(0)
+		treeView.append_column(column)
+
+		renderText = gtk.CellRendererText()
+		column = gtk.TreeViewColumn("Irssi Host/Port", renderText, text=1)
+		column.set_sort_column_id(1)
+		treeView.append_column(column)
+
 	def _initLayout(self):
 		# Main Box
 		mainVBox = gtk.VBox(False, 20)
-		# Server Box
-		serverHBox = gtk.HBox(False, 20)
-		serverHBox.pack_start(gtk.Label("Irssi Proxy Server"), False, False, 10)
-		self._host = gtk.Entry()
-		serverHBox.pack_end(self._host, False, False, 10)
-		mainVBox.pack_start(serverHBox, False, False, 10)
-		# Port Box
-		portHBox = gtk.HBox(False, 20)
-		portHBox.pack_start(gtk.Label("Irssi Proxy Port"), False, False, 10)
-		self._port = gtk.Entry()
-		self._port.set_width_chars(8)
-		self._port.set_text("6667")
-		portHBox.pack_end(self._port, False, False, 10)
-		mainVBox.pack_start(portHBox, False, False, 10)
-		# Password Box
-		passHBox = gtk.HBox(False, 20)
-		passHBox.pack_start(gtk.Label("Irssi Proxy Password"), False, False, 10)
-		self._password = gtk.Entry()
-		self._password.set_visibility(False)
-		passHBox.pack_end(self._password, False, False, 10)
-		mainVBox.pack_start(passHBox, False, False, 10)
-		# Match Box
-		matchHBox = gtk.HBox(False, 20)
-		matchHBox.pack_start(gtk.Label("Regex to Match"), False, False, 10)
-		self.match = gtk.Entry()
-		self.match.connect("changed", self._checkRegex)
-		matchHBox.pack_end(self.match, False, False, 10)
-		mainVBox.pack_start(matchHBox, False, False, 10)
-		# Status bar
-		self._statusBar = gtk.Statusbar()
-		self._context = self._statusBar.get_context_id("General Settings")
-		self._statusBar.push(self._context, "Disconnected...")
-		mainVBox.pack_end(self._statusBar, False, False, 10)
-		# Button Box
+		# Servers box
+		sw = gtk.ScrolledWindow()
+		sw.set_shadow_type(gtk.SHADOW_ETCHED_IN)
+		sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+		mainVBox.pack_start(sw, True, True, 0)
+
+		# Add buttons for interacting with the servers
 		buttonHBox = gtk.HBox(False, 20)
-		self.btnDisconnect = gtk.Button("Disconnect", gtk.STOCK_DISCONNECT)
-		self.btnDisconnect.set_sensitive(False)
-		self.btnDisconnect.connect("clicked", self.on_disconnect)
-		buttonHBox.pack_end(self.btnDisconnect, False)
-		self.btnConnect = gtk.Button("Connect", gtk.STOCK_CONNECT)
-		self.btnConnect.connect("clicked", self.on_connect)
-		buttonHBox.pack_end(self.btnConnect, False)
+		remove = gtk.Button("Delete", gtk.STOCK_DELETE)
+		buttonHBox.pack_end(remove, False, False, 10)
+		add = gtk.Button("Add", gtk.STOCK_ADD)
+		add.connect("clicked", self.addNetwork)
+		buttonHBox.pack_end(add, False, False, 10)
 		mainVBox.pack_end(buttonHBox, False, False, 10)
-		# show everything
+
+		# Setup the server list
+		servers = self._initModel()
+		treeView = gtk.TreeView(servers)
+		treeView.set_rules_hint(True)
+		sw.add(treeView)
+		self._initColumns(treeView)
+
 		mainVBox.show_all()
+		remove.hide()
 		self.add(mainVBox)
 
 	def _initStatusIcon(self):
@@ -144,6 +170,13 @@ class IrssiProxy(gtk.Window):
 		statusIcon.connect("popup-menu", self.popup_statusIcon_menu)
 		statusIcon.connect("activate", self.show)
 		statusIcon.set_tooltip('IrssiProxy Notifications')
+
+	def _initModel(self):
+		self._connNo = self.render_icon(gtk.STOCK_NO, gtk.ICON_SIZE_BUTTON, "Not Connected")
+		self._connYes = self.render_icon(gtk.STOCK_YES, gtk.ICON_SIZE_BUTTON, "Connection Established")
+		servers = gtk.ListStore(gtk.gdk.Pixbuf, gobject.TYPE_STRING)
+		servers.append([self._connNo, "php-oop.net/2227"])
+		return servers
 
 class IrssiProxyConnection(threading.Thread):
 	def __init__(self, irssi, host, port, password):
@@ -190,6 +223,10 @@ class IrssiProxyConnection(threading.Thread):
 		while not self.stopthread.isSet():
 			try:
 				data = self.recv()
+				if data == b'':
+					print "Server disconnected"
+					self.stop()
+					continue
 				print "Recv: %s" % (data.strip())
 				m = re.match(":([^\s]+)![^\s]+\sPRIVMSG\s([^\s]+)\s:(.*)", data)
 				if m is not None and re.search(self.irssi.match.get_text(), m.group(3)):
@@ -208,6 +245,7 @@ class IrssiProxyConnection(threading.Thread):
 				if e.errno != 11 and e.errno is not None:
 					self.stop()
 					print e
+		self.sock.close()
 		self.sock = None
 		gtk.threads_enter()
 		self.irssi.btnDisconnect.set_sensitive(False)
@@ -220,10 +258,14 @@ class IrssiProxyConnection(threading.Thread):
 
 	def send(self, buffer):
 		print "Sent: " + buffer
-		return self.sock.sendall(buffer + "\r\n")
+		len = self.sock.sendall(buffer + "\r\n")
+		if len == 0:
+			print "Server disconnected"
+			self.stop()
 
 	def stop(self):
-		self.sock.close()
+		if self.sock:
+			self.sock.shutdown(socket.SHUT_RDWR)
 		self.stopthread.set()
 
 if __name__ == "__main__":
